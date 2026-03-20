@@ -219,7 +219,9 @@ function Cmd-Start {
     Write-Host "Starting container '$containerName' (image: $imageName) in background..."
     $dockerArgs = @(
         'run', '-d',
-        '--name', $containerName
+        '--name', $containerName,
+        '--add-host', 'host.docker.internal:host-gateway',
+        '-e', 'MISE_TRUSTED_CONFIG_PATHS=/workspace'
     )
     $dockerArgs += $proxyEnv
     $dockerArgs += $extraOpts
