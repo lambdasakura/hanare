@@ -1,0 +1,10 @@
+# シェルスクリプトは常に LF（Docker コンテナ内で実行されるため）
+*.sh text eol=lf
+# Dockerfile も LF
+Dockerfile text eol=lf
+# hanare (bash) も LF
+hanare text eol=lf
+# シェル設定ファイルもコンテナ内で使われるため LF
+config/bash/** text eol=lf
+config/zsh/** text eol=lf
+config/tmux/** text eol=lf

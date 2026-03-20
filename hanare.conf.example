@@ -1,0 +1,12 @@
+# hanare のデフォルト設定（hanare.conf にコピーして編集）
+# 環境変数 HANARE_IMAGE / HANARE_SHELL / HANARE_DOCKER_OPTS でも上書き可能
+# CLI フラグ (--image, --shell) が最優先
+
+# デフォルトのイメージ名（hanare build / hanare start で使用）
+# IMAGE=default
+
+# デフォルトのシェル（bash or zsh）
+# SHELL=zsh
+
+# docker run に追加するオプション
+# DOCKER_OPTS=--gpus all --network host -p 8080:8080

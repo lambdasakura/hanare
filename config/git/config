@@ -1,0 +1,12 @@
+[core]
+	autoCRLF = false
+	quotepath = false
+
+[init]
+	defaultBranch = main
+
+[safe]
+	directory = *
+
+[include]
+	path = config.local

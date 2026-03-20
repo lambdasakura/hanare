@@ -1,0 +1,8 @@
+# zsh の個人設定（local.zshrc にコピーして編集）
+# .zshrc から conf/* の読み込み後にソースされる
+
+# VSCode Shell Integration
+# [[ "$TERM_PROGRAM" == "vscode" ]] && . "$(code --locate-shell-integration-path zsh)"
+
+# bun completions
+# [ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"

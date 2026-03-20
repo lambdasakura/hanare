@@ -1,0 +1,25 @@
+# tmux の個人設定（tmux.local.conf にコピーして編集）
+# tmux.conf から source-file で読み込まれる
+
+# prefix キーの変更
+# set -g prefix C-z
+# unbind C-b
+
+# ペイン分割
+# bind 3 split-window -h
+# bind 2 split-window -v
+
+# vi モード
+# set-window-option -g mode-keys vi
+
+# status line のカスタマイズ
+# set-option -g status-interval 1
+# set-option -g status-justify "centre"
+# set-option -g status-bg "colour238"
+# set-option -g status-fg "colour255"
+# set-option -g status-left-length 20
+# set-option -g status-left "#[fg=colour255,bg=colour241]Session: #S #[default]"
+# set-option -g status-right-length 60
+# set-option -g status-right "#[fg=colour255,bg=colour241] #h | LA: #(cut -d' ' -f-3 /proc/loadavg) | %m/%d %H:%M:%S#[default]"
+# set-window-option -g window-status-format " #I: #W "
+# set-window-option -g window-status-current-format "#[fg=colour255,bg=colour27,bold] #I: #W #[default]"

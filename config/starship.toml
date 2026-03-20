@@ -1,0 +1,34 @@
+format = "$username$hostname ❯ "
+
+[aws]
+disabled = true
+
+[username]
+style_user = 'bold green'
+format = '[$user]($style)'
+show_always = true
+
+[hostname]
+style = 'bold blue'
+ssh_only = false
+format = '@[$ssh_symbol$hostname]($style)'
+
+[localip]
+ssh_only = false
+disabled = false
+
+[directory]
+format = '\[[$path]($style)[$read_only]($read_only_style)\]'
+
+[openstack]
+disabled = true
+
+# Disable the package module, hiding it from the prompt completely
+[package]
+disabled = true
+
+[nix_shell]
+disabled = true
+
+[gcloud]
+disabled = true

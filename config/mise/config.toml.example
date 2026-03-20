@@ -1,0 +1,12 @@
+# mise のグローバルツール設定（config.toml にコピーして編集）
+# mise use --global <tool>@<version> で追加することもできる
+#
+# Node.js (LTS) は init.sh が自動でインストールするため、
+# ここに記載しなくても利用可能
+
+[tools]
+# python = "latest"
+# go = "latest"
+# rust = "latest"
+# deno = "latest"
+# terraform = "latest"

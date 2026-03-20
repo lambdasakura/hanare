@@ -1,0 +1,42 @@
+# === claude (全て個人/バイナリ) ===
+config/claude/*
+!config/claude/.gitkeep
+
+# === git (汎用設定は追跡、個人設定は除外) ===
+config/git/config.local
+config/git/config-isid
+
+# === glab-cli (トークン含むため全て除外) ===
+config/glab-cli/
+
+# === mise (バイナリ・ユーザ設定は除外、example は追跡) ===
+config/mise/*
+!config/mise/.gitkeep
+!config/mise/config.toml.example
+
+# === bash (汎用設定は追跡、個人設定は除外) ===
+config/bash/local.bashrc
+config/bash/conf/90_local.sh
+
+# === tmux (汎用設定は追跡、個人設定は除外) ===
+config/tmux/tmux.local.conf
+
+# === zsh (汎用設定は追跡、個人/生成ファイルは除外) ===
+config/zsh/.zcompdump
+config/zsh/.zprofile
+config/zsh/local.zshrc
+config/zsh/conf/90_local.sh
+
+# === hanare 設定ファイル ===
+hanare.conf
+
+# === docker (カスタム Dockerfile は除外、example は追跡) ===
+docker/Dockerfile.*
+!docker/Dockerfile.example
+
+# === データ/鍵 ===
+mise-data/*
+!mise-data/.gitkeep
+
+ssh/*
+!ssh/.gitkeep

@@ -1,0 +1,5 @@
+# bash の個人設定（local.bashrc にコピーして編集）
+# .bashrc から conf/* の読み込み後にソースされる
+
+# VSCode Shell Integration
+# [[ "$TERM_PROGRAM" == "vscode" ]] && . "$(code --locate-shell-integration-path bash)"

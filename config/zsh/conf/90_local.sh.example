@@ -1,0 +1,36 @@
+# zsh の個人設定（90_local.sh にコピーして編集）
+# conf/ 内のファイルはファイル名順にソースされるため、
+# 00_zsh_setup.sh の設定を上書きできる
+
+###############################################################################
+# Aliases
+###############################################################################
+# LS_COMMON="--color=auto -F --group-directories-first --show-control-char "
+# alias ls="/bin/ls $LS_COMMON"
+# alias ll="/bin/ls $LS_COMMON -l"
+# alias la="/bin/ls $LS_COMMON -la"
+
+# cd をしたときに ls を実行する
+# function chpwd() { ls }
+
+###############################################################################
+# Environment
+###############################################################################
+# export EDITOR=vim
+# export PAGER=less
+# export LESS='-g -i -M -R -S -W -z-4 -x4'
+
+# less のシンタックスハイライト
+# export LESS_TERMCAP_mb=$'\E[01;31m'
+# export LESS_TERMCAP_md=$'\E[01;31m'
+# export LESS_TERMCAP_me=$'\E[0m'
+# export LESS_TERMCAP_se=$'\E[0m'
+# export LESS_TERMCAP_so=$'\E[00;47;30m'
+# export LESS_TERMCAP_ue=$'\E[0m'
+# export LESS_TERMCAP_us=$'\E[01;32m'
+
+###############################################################################
+# Additional PATH
+###############################################################################
+# export PATH=$PATH:~/.local/roswell/bin
+# export PATH=$PATH:/usr/local/texlive/bin/

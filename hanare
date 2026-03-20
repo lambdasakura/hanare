@@ -1,0 +1,328 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+IMAGE_BASE="hanare"
+CONTAINER_PREFIX="hanare"
+TMUX_SESSION="main"
+
+# デフォルト値（hanare.conf → 環境変数 → CLI フラグの順で上書き）
+CONF_IMAGE="default"
+CONF_SHELL="zsh"
+CONF_DOCKER_OPTS=""
+
+# 設定ファイルの読み込み
+if [[ -f "$SCRIPT_DIR/hanare.conf" ]]; then
+    while IFS= read -r line; do
+        line="${line%%#*}"            # コメント除去
+        [[ -z "${line// }" ]] && continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        key="${key//[[:space:]]/}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+        case "$key" in
+            IMAGE) CONF_IMAGE="$value" ;;
+            SHELL) CONF_SHELL="$value" ;;
+            DOCKER_OPTS) CONF_DOCKER_OPTS="$value" ;;
+        esac
+    done < "$SCRIPT_DIR/hanare.conf"
+fi
+
+# 環境変数で上書き
+[[ -n "${HANARE_IMAGE:-}" ]]       && CONF_IMAGE="$HANARE_IMAGE"
+[[ -n "${HANARE_SHELL:-}" ]]       && CONF_SHELL="$HANARE_SHELL"
+[[ -n "${HANARE_DOCKER_OPTS:-}" ]] && CONF_DOCKER_OPTS="$HANARE_DOCKER_OPTS"
+
+die() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+require_docker() {
+    command -v docker >/dev/null 2>&1 || die "docker is not installed"
+    docker info >/dev/null 2>&1 || die "docker daemon is not running or current user lacks permission"
+}
+
+require_docker_socket() {
+    [[ -S /var/run/docker.sock ]] || die "/var/run/docker.sock not found"
+}
+
+container_name_for() {
+    echo "${CONTAINER_PREFIX}-$1"
+}
+
+is_container_running() {
+    docker container inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q true
+}
+
+# ホスト環境のプロキシ設定を配列に収集（第1引数: フラグ名、第2引数: 出力配列名）
+collect_proxy_flags() {
+    local flag="$1"
+    local -n _out="$2"
+    local var
+    for var in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
+        if [[ -n "${!var:-}" ]]; then
+            _out+=("$flag" "$var=${!var}")
+        fi
+    done
+}
+
+cmd_build() {
+    require_docker
+
+    local tag="${1:-$CONF_IMAGE}"
+    local dockerfile image_name
+
+    if [[ "$tag" == "default" ]]; then
+        dockerfile="$SCRIPT_DIR/docker/Dockerfile"
+    else
+        dockerfile="$SCRIPT_DIR/docker/Dockerfile.$tag"
+    fi
+
+    [[ -f "$dockerfile" ]] || die "Dockerfile not found: $dockerfile"
+
+    image_name="$IMAGE_BASE:$tag"
+    local -a proxy_args=()
+    collect_proxy_flags --build-arg proxy_args
+
+    echo "Building image '$image_name' from $dockerfile..."
+    docker build \
+        -f "$dockerfile" \
+        "${proxy_args[@]}" \
+        -t "$image_name" \
+        "$SCRIPT_DIR"
+}
+
+cmd_start() {
+    local shell="/bin/$CONF_SHELL"
+    local image_tag="$CONF_IMAGE"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --shell)
+                [[ $# -ge 2 ]] || die "--shell requires an argument (bash or zsh)"
+                case "$2" in
+                    bash) shell="/bin/bash" ;;
+                    zsh)  shell="/bin/zsh" ;;
+                    *)    die "Unsupported shell: $2 (bash or zsh)" ;;
+                esac
+                shift 2
+                ;;
+            --image)
+                [[ $# -ge 2 ]] || die "--image requires an argument"
+                image_tag="$2"
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    if [[ $# -eq 0 ]]; then
+        die "Usage: hanare start [--image <name>] [--shell bash|zsh] <directory>"
+    fi
+
+    local image_name="$IMAGE_BASE:$image_tag"
+
+    local target_dir="$1"
+    [[ -e "$target_dir" ]] || die "Path does not exist: $target_dir"
+    [[ -d "$target_dir" ]] || die "Not a directory: $target_dir"
+    target_dir="$(cd "$target_dir" && pwd)"
+
+    local dir_name
+    dir_name="$(basename "$target_dir")"
+    [[ -n "$dir_name" && "$dir_name" != "/" ]] || die "Cannot mount root directory"
+
+    local container_name
+    container_name="$(container_name_for "$dir_name")"
+
+    require_docker
+    require_docker_socket
+
+    if is_container_running "$container_name"; then
+        echo "Container '$container_name' is already running. Attaching tmux session..."
+        exec docker exec -it -e TERM=xterm-256color "$container_name" \
+            tmux new-session -A -s "$TMUX_SESSION" "$shell"
+    fi
+
+    # 停止済みコンテナが残っていれば削除
+    if docker container inspect "$container_name" >/dev/null 2>&1; then
+        echo "Removing stopped container '$container_name'..."
+        docker rm "$container_name" >/dev/null
+    fi
+
+    [[ -d "$SCRIPT_DIR/config" ]] || die "$SCRIPT_DIR/config directory not found"
+    [[ -d "$SCRIPT_DIR/ssh" ]]    || die "$SCRIPT_DIR/ssh directory not found"
+
+    docker image inspect "$image_name" >/dev/null 2>&1 \
+        || die "Image '$image_name' not found. Run 'hanare build${image_tag:+ $image_tag}' first."
+
+    local -a optional_mounts=()
+    [[ -d "$HOME/.claude" ]]      && optional_mounts+=(-v "$HOME/.claude":/home/ubuntu/.claude)
+    [[ -f "$HOME/.claude.json" ]] && optional_mounts+=(-v "$HOME/.claude.json":/home/ubuntu/.claude.json)
+    [[ -d "$HOME/.codex" ]]       && optional_mounts+=(-v "$HOME/.codex":/home/ubuntu/.codex)
+
+    if [[ "$shell" == "/bin/zsh" ]]; then
+        [[ -f "$SCRIPT_DIR/config/zsh/.zshenv" ]] || die "$SCRIPT_DIR/config/zsh/.zshenv not found"
+        optional_mounts+=(-v "$SCRIPT_DIR/config/zsh/.zshenv":/home/ubuntu/.zshenv:ro)
+    fi
+
+    mkdir -p "$SCRIPT_DIR/mise-data"
+
+    local -a proxy_env=()
+    collect_proxy_flags -e proxy_env
+
+    local -a extra_opts=()
+    if [[ -n "$CONF_DOCKER_OPTS" ]]; then
+        read -ra extra_opts <<< "$CONF_DOCKER_OPTS"
+    fi
+
+    echo "Starting container '$container_name' (image: $image_name) in background..."
+    docker run -d \
+        --name "$container_name" \
+        "${proxy_env[@]}" \
+        "${extra_opts[@]}" \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v "$SCRIPT_DIR/config":/home/ubuntu/.config/ \
+        -v "$SCRIPT_DIR/ssh":/home/ubuntu/.ssh:ro \
+        -v "$SCRIPT_DIR/mise-data":/home/ubuntu/.local/share/mise \
+        "${optional_mounts[@]}" \
+        -v "$target_dir":/workspace/"$dir_name" \
+        "$image_name" sleep infinity >/dev/null
+
+    # コンテナが実際に起動しているか確認
+    if ! is_container_running "$container_name"; then
+        echo "Container '$container_name' exited immediately. Logs:" >&2
+        docker logs "$container_name"
+        docker rm "$container_name" >/dev/null
+        die "container failed to start (see logs above)"
+    fi
+
+    echo "Initializing tools..."
+    docker exec "$container_name" init.sh
+
+    echo "Attaching tmux session..."
+    exec docker exec -it -e TERM=xterm-256color "$container_name" \
+        tmux new-session -A -s "$TMUX_SESSION" "$shell"
+}
+
+cmd_stop() {
+    if [[ $# -eq 0 ]]; then
+        die "Usage: hanare stop <directory>"
+    fi
+
+    local target_dir="$1"
+    [[ -e "$target_dir" ]] || die "Path does not exist: $target_dir"
+    [[ -d "$target_dir" ]] || die "Not a directory: $target_dir"
+    target_dir="$(cd "$target_dir" && pwd)"
+
+    local dir_name
+    dir_name="$(basename "$target_dir")"
+
+    local container_name
+    container_name="$(container_name_for "$dir_name")"
+
+    require_docker
+
+    if ! docker container inspect "$container_name" >/dev/null 2>&1; then
+        die "Container '$container_name' does not exist"
+    fi
+
+    echo "Stopping container '$container_name'..."
+    docker rm -f "$container_name" >/dev/null
+    echo "Stopped."
+}
+
+cmd_clean() {
+    require_docker
+
+    local containers
+    containers="$(docker ps -a --filter "name=^${CONTAINER_PREFIX}-" --format '{{.Names}}')"
+
+    if [[ -n "$containers" ]]; then
+        echo "Stopping and removing all hanare containers..."
+        echo "$containers" | while read -r name; do
+            docker rm -f "$name" >/dev/null
+            echo "  Removed $name"
+        done
+    else
+        echo "No hanare containers to remove."
+    fi
+
+    local images
+    images="$(docker images "$IMAGE_BASE" --format '{{.Repository}}:{{.Tag}}')"
+
+    if [[ -n "$images" ]]; then
+        echo "Removing hanare images..."
+        echo "$images" | while read -r img; do
+            docker rmi "$img" >/dev/null
+            echo "  Removed $img"
+        done
+    else
+        echo "No hanare images to remove."
+    fi
+}
+
+cmd_status() {
+    require_docker
+
+    local containers
+    containers="$(docker ps --filter "name=^${CONTAINER_PREFIX}-" --format '{{.Names}}\t{{.Status}}\t{{.Image}}')"
+
+    if [[ -z "$containers" ]]; then
+        echo "No running hanare containers."
+    else
+        echo "Running hanare containers:"
+        echo "$containers" | while IFS=$'\t' read -r name status image; do
+            echo "  $name  ($status)  [$image]"
+        done
+    fi
+}
+
+cmd_help() {
+    cat <<EOF
+Usage: hanare <command>
+
+Commands:
+    build [<name>]   Build a container image (default: docker/Dockerfile)
+                     With <name>: build from docker/Dockerfile.<name>
+    start [--image <name>] [--shell bash|zsh] <dir>
+                     Start (or attach to) the container for <dir>
+    stop <dir>       Stop and remove the container for <dir>
+    clean            Stop all containers and remove all hanare images
+    status           Show running hanare containers
+    help             Show this help
+
+Images:
+    hanare build            -> hanare:default  (from docker/Dockerfile)
+    hanare build myenv      -> hanare:myenv    (from docker/Dockerfile.myenv)
+    hanare start --image myenv <dir>  (use hanare:myenv)
+
+Defaults:
+    Create hanare.conf to change defaults:
+        IMAGE=myenv
+        SHELL=bash
+    Or use environment variables: HANARE_IMAGE, HANARE_SHELL
+    CLI flags (--image, --shell) take highest priority.
+
+Proxy:
+    Set HTTP_PROXY, HTTPS_PROXY, NO_PROXY environment variables
+    before running build/start. They are passed to Docker automatically.
+EOF
+}
+
+case "${1:-help}" in
+    build) shift; cmd_build "$@" ;;
+    start) shift; cmd_start "$@" ;;
+    stop) shift; cmd_stop "$@" ;;
+    clean) cmd_clean ;;
+    status) cmd_status ;;
+    help|--help|-h) cmd_help ;;
+    *)
+        echo "Unknown command: $1" >&2
+        cmd_help >&2
+        exit 1
+        ;;
+esac
