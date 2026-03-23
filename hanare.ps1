@@ -149,20 +149,27 @@ function Cmd-Start {
     }
 
     if ($i -ge $Params.Count) {
-        Die 'Usage: hanare start [--image <name>] [--shell bash|zsh] <directory>'
+        Die 'Usage: hanare start [--image <name>] [--shell bash|zsh] <directory>...'
     }
 
     $imageName = "${ImageBase}:${imageTag}"
 
-    $targetDir = $Params[$i]
-    if (-not (Test-Path $targetDir)) { Die "Path does not exist: $targetDir" }
-    if (-not (Test-Path $targetDir -PathType Container)) { Die "Not a directory: $targetDir" }
-    $targetDir = (Resolve-Path $targetDir).Path
+    $targetDirs = [System.Collections.Generic.List[string]]::new()
+    $dirNames = [System.Collections.Generic.List[string]]::new()
+    while ($i -lt $Params.Count) {
+        $td = $Params[$i]
+        if (-not (Test-Path $td)) { Die "Path does not exist: $td" }
+        if (-not (Test-Path $td -PathType Container)) { Die "Not a directory: $td" }
+        $td = (Resolve-Path $td).Path
+        $dn = Split-Path -Leaf $td
+        if ([string]::IsNullOrEmpty($dn)) { Die 'Cannot mount root directory' }
+        if ($dirNames -contains $dn) { Die "Duplicate directory basename: $dn" }
+        $targetDirs.Add($td)
+        $dirNames.Add($dn)
+        $i++
+    }
 
-    $dirName = Split-Path -Leaf $targetDir
-    if ([string]::IsNullOrEmpty($dirName)) { Die 'Cannot mount root directory' }
-
-    $containerName = Container-Name $dirName
+    $containerName = Container-Name $dirNames[0]
 
     Require-Docker
     Require-DockerEngine
@@ -232,10 +239,10 @@ function Cmd-Start {
         '-v', "${miseData}:/home/ubuntu/.local/share/mise"
     )
     $dockerArgs += $optionalMounts
-    $dockerArgs += @(
-        '-v', "${targetDir}:/workspace/$dirName",
-        $imageName, 'sleep', 'infinity'
-    )
+    for ($vi = 0; $vi -lt $targetDirs.Count; $vi++) {
+        $dockerArgs += @('-v', "$($targetDirs[$vi]):/workspace/$($dirNames[$vi])")
+    }
+    $dockerArgs += @($imageName, 'sleep', 'infinity')
     & docker @dockerArgs *>$null
     if ($LASTEXITCODE -ne 0) { Die 'docker run failed' }
 
@@ -253,6 +260,57 @@ function Cmd-Start {
     if ($LASTEXITCODE -ne 0) { Die 'init.sh failed' }
 
     Write-Host "Attaching tmux session..."
+    & docker exec -it -e TERM=xterm-256color $containerName tmux new-session -A -s $TmuxSession $shell
+    exit $LASTEXITCODE
+}
+
+function Cmd-Attach {
+    param([string[]]$Params = @())
+    if ($null -eq $Params) { $Params = @() }
+
+    $shell = "/bin/$ConfShell"
+    $i = 0
+    while ($i -lt $Params.Count) {
+        if ($Params[$i] -eq '--shell') {
+            if ($i + 1 -ge $Params.Count) { Die '--shell requires an argument (bash or zsh)' }
+            switch ($Params[$i + 1]) {
+                'bash' { $shell = '/bin/bash' }
+                'zsh'  { $shell = '/bin/zsh' }
+                default { Die "Unsupported shell: $($Params[$i + 1]) (bash or zsh)" }
+            }
+            $i += 2; continue
+        }
+        break
+    }
+
+    Require-Docker
+
+    if ($i -ge $Params.Count) {
+        $containers = docker ps --filter "name=^${ContainerPrefix}-" --format '{{.Names}}'
+        if ($LASTEXITCODE -ne 0) { Die 'docker ps failed' }
+
+        if ([string]::IsNullOrEmpty($containers)) {
+            Die 'No running hanare containers'
+        }
+
+        $list = @($containers -split "`n" | Where-Object { -not [string]::IsNullOrEmpty($_) })
+        if ($list.Count -eq 1) {
+            $containerName = $list[0]
+        } else {
+            Write-Host 'Multiple running containers. Specify one:'
+            foreach ($name in $list) {
+                Write-Host "  $($name.Substring($ContainerPrefix.Length + 1))"
+            }
+            exit 1
+        }
+    } else {
+        $containerName = Container-Name $Params[$i]
+    }
+
+    if (-not (Is-ContainerRunning $containerName)) {
+        Die "Container '$containerName' is not running"
+    }
+
     & docker exec -it -e TERM=xterm-256color $containerName tmux new-session -A -s $TmuxSession $shell
     exit $LASTEXITCODE
 }
@@ -342,8 +400,12 @@ Usage: hanare <command>
 Commands:
     build [<name>]   Build a container image (default: docker/Dockerfile)
                      With <name>: build from docker/Dockerfile.<name>
-    start [--image <name>] [--shell bash|zsh] <dir>
-                     Start (or attach to) the container for <dir>
+    start [--image <name>] [--shell bash|zsh] <dir>...
+                     Start a new container for <dir>
+                     Multiple directories can be mounted at once
+    attach [--shell bash|zsh] [<name>]
+                     Attach to a running container by name
+                     Without <name>: auto-select if only one is running
     stop <dir>       Stop and remove the container for <dir>
     clean            Stop all containers and remove all hanare images
     status           Show running hanare containers
@@ -374,6 +436,7 @@ $remaining = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
 switch ($command) {
     'build'  { Cmd-Build -Params $remaining }
     'start'  { Cmd-Start -Params $remaining }
+    'attach' { Cmd-Attach -Params $remaining }
     'stop'   { Cmd-Stop -Params $remaining }
     'clean'  { Cmd-Clean }
     'status' { Cmd-Status }

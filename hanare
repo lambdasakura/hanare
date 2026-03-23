@@ -121,22 +121,33 @@ cmd_start() {
     done
 
     if [[ $# -eq 0 ]]; then
-        die "Usage: hanare start [--image <name>] [--shell bash|zsh] <directory>"
+        die "Usage: hanare start [--image <name>] [--shell bash|zsh] <directory>..."
     fi
 
     local image_name="$IMAGE_BASE:$image_tag"
 
-    local target_dir="$1"
-    [[ -e "$target_dir" ]] || die "Path does not exist: $target_dir"
-    [[ -d "$target_dir" ]] || die "Not a directory: $target_dir"
-    target_dir="$(cd "$target_dir" && pwd)"
+    local -a target_dirs=()
+    local -a dir_names=()
+    for arg in "$@"; do
+        [[ -e "$arg" ]] || die "Path does not exist: $arg"
+        [[ -d "$arg" ]] || die "Not a directory: $arg"
+        local resolved
+        resolved="$(cd "$arg" && pwd)"
+        local name
+        name="$(basename "$resolved")"
+        [[ -n "$name" && "$name" != "/" ]] || die "Cannot mount root directory"
 
-    local dir_name
-    dir_name="$(basename "$target_dir")"
-    [[ -n "$dir_name" && "$dir_name" != "/" ]] || die "Cannot mount root directory"
+        local existing
+        for existing in "${dir_names[@]}"; do
+            [[ "$existing" != "$name" ]] || die "Duplicate directory basename: $name"
+        done
+
+        target_dirs+=("$resolved")
+        dir_names+=("$name")
+    done
 
     local container_name
-    container_name="$(container_name_for "$dir_name")"
+    container_name="$(container_name_for "${dir_names[0]}")"
 
     require_docker
     require_docker_socket
@@ -179,6 +190,12 @@ cmd_start() {
         read -ra extra_opts <<< "$CONF_DOCKER_OPTS"
     fi
 
+    local -a volume_mounts=()
+    local idx
+    for idx in "${!target_dirs[@]}"; do
+        volume_mounts+=(-v "${target_dirs[$idx]}":/workspace/"${dir_names[$idx]}")
+    done
+
     echo "Starting container '$container_name' (image: $image_name) in background..."
     docker run -d \
         --name "$container_name" \
@@ -191,7 +208,7 @@ cmd_start() {
         -v "$SCRIPT_DIR/ssh":/home/ubuntu/.ssh:ro \
         -v "$SCRIPT_DIR/mise-data":/home/ubuntu/.local/share/mise \
         "${optional_mounts[@]}" \
-        -v "$target_dir":/workspace/"$dir_name" \
+        "${volume_mounts[@]}" \
         "$image_name" sleep infinity >/dev/null
 
     # コンテナが実際に起動しているか確認
@@ -206,6 +223,61 @@ cmd_start() {
     docker exec "$container_name" init.sh
 
     echo "Attaching tmux session..."
+    exec docker exec -it -e TERM=xterm-256color "$container_name" \
+        tmux new-session -A -s "$TMUX_SESSION" "$shell"
+}
+
+cmd_attach() {
+    local shell="/bin/$CONF_SHELL"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --shell)
+                [[ $# -ge 2 ]] || die "--shell requires an argument (bash or zsh)"
+                case "$2" in
+                    bash) shell="/bin/bash" ;;
+                    zsh)  shell="/bin/zsh" ;;
+                    *)    die "Unsupported shell: $2 (bash or zsh)" ;;
+                esac
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    require_docker
+
+    local container_name
+    if [[ $# -eq 0 ]]; then
+        local containers
+        containers="$(docker ps --filter "name=^${CONTAINER_PREFIX}-" --format '{{.Names}}')"
+
+        if [[ -z "$containers" ]]; then
+            die "No running hanare containers"
+        fi
+
+        local count
+        count="$(echo "$containers" | wc -l)"
+
+        if [[ "$count" -eq 1 ]]; then
+            container_name="$containers"
+        else
+            echo "Multiple running containers. Specify one:" >&2
+            echo "$containers" | while read -r name; do
+                echo "  ${name#${CONTAINER_PREFIX}-}" >&2
+            done
+            exit 1
+        fi
+    else
+        container_name="$(container_name_for "$1")"
+    fi
+
+    if ! is_container_running "$container_name"; then
+        die "Container '$container_name' is not running"
+    fi
+
     exec docker exec -it -e TERM=xterm-256color "$container_name" \
         tmux new-session -A -s "$TMUX_SESSION" "$shell"
 }
@@ -290,8 +362,12 @@ Usage: hanare <command>
 Commands:
     build [<name>]   Build a container image (default: docker/Dockerfile)
                      With <name>: build from docker/Dockerfile.<name>
-    start [--image <name>] [--shell bash|zsh] <dir>
-                     Start (or attach to) the container for <dir>
+    start [--image <name>] [--shell bash|zsh] <dir>...
+                     Start a new container for <dir>
+                     Multiple directories can be mounted at once
+    attach [--shell bash|zsh] [<name>]
+                     Attach to a running container by name
+                     Without <name>: auto-select if only one is running
     stop <dir>       Stop and remove the container for <dir>
     clean            Stop all containers and remove all hanare images
     status           Show running hanare containers
@@ -318,6 +394,7 @@ EOF
 case "${1:-help}" in
     build) shift; cmd_build "$@" ;;
     start) shift; cmd_start "$@" ;;
+    attach) shift; cmd_attach "$@" ;;
     stop) shift; cmd_stop "$@" ;;
     clean) cmd_clean ;;
     status) cmd_status ;;
