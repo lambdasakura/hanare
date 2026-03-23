@@ -58,6 +58,12 @@ hanare build
 # コンテナを起動（ディレクトリを /workspace 配下にマウント）
 hanare start ~/projects/myapp
 
+# 複数ディレクトリを同時にマウントして起動
+hanare start ~/projects/myapp ~/projects/shared-lib
+
+# 起動中のコンテナに別ターミナルから接続
+hanare attach myapp
+
 # コンテナを停止・削除
 hanare stop ~/projects/myapp
 ```
@@ -71,7 +77,8 @@ hanare stop ~/projects/myapp
 | コマンド | 説明 |
 |---|---|
 | `hanare build [<name>]` | コンテナイメージをビルド。`<name>` 指定時は `Dockerfile.<name>` を使用 |
-| `hanare start [--image <name>] [--shell bash\|zsh] <dir>` | コンテナを起動。既に起動中なら再接続 |
+| `hanare start [--image <name>] [--shell bash\|zsh] <dir>...` | コンテナを起動。複数ディレクトリを同時にマウント可能。既に起動中なら再接続 |
+| `hanare attach [--shell bash\|zsh] [<name>]` | 起動中のコンテナに接続。`<name>` 省略時は起動中のコンテナが 1 つなら自動選択 |
 | `hanare stop <dir>` | コンテナを停止・削除 |
 | `hanare clean` | 全コンテナを停止・削除し、全 hanare イメージも削除 |
 | `hanare status` | 起動中の hanare コンテナを一覧表示（使用イメージも表示） |
@@ -80,7 +87,7 @@ hanare stop ~/projects/myapp
 ## 起動の仕組み
 
 ```
-hanare start <dir>
+hanare start <dir>...
   │
   ├─ docker run -d ... sleep infinity   ← コンテナをバックグラウンドで起動
   │    └─ entrypoint.sh                 ← Docker ソケットのパーミッション設定
@@ -90,7 +97,7 @@ hanare start <dir>
   └─ docker exec -it tmux ...          ← tmux セッションに接続（シェル起動）
 ```
 
-既に起動中のコンテナに対して `start` を実行すると、init をスキップして tmux に再接続する。
+既に起動中のコンテナに対して `start` を実行すると、init をスキップして tmux に再接続する。`attach` でも起動中のコンテナに接続できる（別ターミナルからの接続用）。
 
 ## デフォルト設定の変更
 
@@ -179,7 +186,7 @@ hanare start .
 | `config/` | `~/.config/` | 設定ファイル群 |
 | `ssh/` | `~/.ssh/` | 読み取り専用 |
 | `mise-data/` | `~/.local/share/mise/` | ツールデータ永続化 |
-| `<dir>` (引数) | `/workspace/<dir名>/` | 作業ディレクトリ |
+| `<dir>...` (引数) | `/workspace/<dir名>/` | 作業ディレクトリ（複数指定可） |
 | `/var/run/docker.sock` | `/var/run/docker.sock` | Docker outside of Docker |
 
 ### 条件付きでマウントされるもの
@@ -201,6 +208,7 @@ hanare start .
 | ランタイム | Node.js (LTS) ※ init.sh が自動インストール |
 | AI | Claude Code, Codex (`@openai/codex`) |
 | ビルド | make, build-essential (gcc, g++ 含む), pkg-config |
+| ネットワーク | dnsutils (dig, nslookup), iputils-ping, net-tools, traceroute, iproute2 (ip, ss) |
 | ユーティリティ | git, curl, wget, jq, vim, nano, less, zip/unzip, Docker CLI, man |
 
 ## カスタマイズ
