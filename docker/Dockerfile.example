@@ -1,0 +1,17 @@
+# カスタムイメージのひな形
+# Dockerfile.<name> にコピーして編集し、hanare build <name> でビルドする
+#
+# 例: Dockerfile.myenv にコピーした場合
+#   hanare build myenv               -> hanare:myenv イメージをビルド
+#   hanare start --image myenv .     -> hanare:myenv でコンテナを起動
+
+# デフォルトイメージを拡張する場合
+FROM hanare:default
+
+# パッケージを追加
+# RUN sudo apt-get update && sudo apt-get install -y \
+#     python3-pip \
+#     && sudo rm -rf /var/lib/apt/lists/*
+
+# mise でツールを追加（イメージに焼き込む場合）
+# RUN mise use --global python@latest && mise install --yes
