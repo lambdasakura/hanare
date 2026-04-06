@@ -284,19 +284,17 @@ cmd_attach() {
 
 cmd_stop() {
     if [[ $# -eq 0 ]]; then
-        die "Usage: hanare stop <directory>"
+        die "Usage: hanare stop <directory|name>"
     fi
 
-    local target_dir="$1"
-    [[ -e "$target_dir" ]] || die "Path does not exist: $target_dir"
-    [[ -d "$target_dir" ]] || die "Not a directory: $target_dir"
-    target_dir="$(cd "$target_dir" && pwd)"
-
-    local dir_name
-    dir_name="$(basename "$target_dir")"
-
     local container_name
-    container_name="$(container_name_for "$dir_name")"
+    if [[ -d "$1" ]]; then
+        local target_dir
+        target_dir="$(cd "$1" && pwd)"
+        container_name="$(container_name_for "$(basename "$target_dir")")"
+    else
+        container_name="$(container_name_for "$1")"
+    fi
 
     require_docker
 
@@ -368,7 +366,7 @@ Commands:
     attach [--shell bash|zsh] [<name>]
                      Attach to a running container by name
                      Without <name>: auto-select if only one is running
-    stop <dir>       Stop and remove the container for <dir>
+    stop <dir|name>  Stop and remove the container by directory or name
     clean            Stop all containers and remove all hanare images
     status           Show running hanare containers
     help             Show this help

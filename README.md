@@ -64,8 +64,9 @@ hanare start ~/projects/myapp ~/projects/shared-lib
 # 起動中のコンテナに別ターミナルから接続
 hanare attach myapp
 
-# コンテナを停止・削除
+# コンテナを停止・削除（ディレクトリパスまたはコンテナ名で指定）
 hanare stop ~/projects/myapp
+hanare stop myapp
 ```
 
 ### 初回起動について
@@ -79,7 +80,7 @@ hanare stop ~/projects/myapp
 | `hanare build [<name>]` | コンテナイメージをビルド。`<name>` 指定時は `Dockerfile.<name>` を使用 |
 | `hanare start [--image <name>] [--shell bash\|zsh] <dir>...` | コンテナを起動。複数ディレクトリを同時にマウント可能。既に起動中なら再接続 |
 | `hanare attach [--shell bash\|zsh] [<name>]` | 起動中のコンテナに接続。`<name>` 省略時は起動中のコンテナが 1 つなら自動選択 |
-| `hanare stop <dir>` | コンテナを停止・削除 |
+| `hanare stop <dir\|name>` | コンテナを停止・削除。ディレクトリパスまたはコンテナ名で指定 |
 | `hanare clean` | 全コンテナを停止・削除し、全 hanare イメージも削除 |
 | `hanare status` | 起動中の hanare コンテナを一覧表示（使用イメージも表示） |
 | `hanare help` | ヘルプを表示 |

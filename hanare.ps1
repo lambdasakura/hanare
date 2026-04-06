@@ -319,15 +319,15 @@ function Cmd-Stop {
     param([string[]]$Params = @())
     if ($null -eq $Params) { $Params = @() }
 
-    if ($Params.Count -eq 0) { Die 'Usage: hanare stop <directory>' }
+    if ($Params.Count -eq 0) { Die 'Usage: hanare stop <directory|name>' }
 
-    $targetDir = $Params[0]
-    if (-not (Test-Path $targetDir)) { Die "Path does not exist: $targetDir" }
-    if (-not (Test-Path $targetDir -PathType Container)) { Die "Not a directory: $targetDir" }
-    $targetDir = (Resolve-Path $targetDir).Path
-
-    $dirName = Split-Path -Leaf $targetDir
-    $containerName = Container-Name $dirName
+    $arg = $Params[0]
+    if (Test-Path $arg -PathType Container) {
+        $targetDir = (Resolve-Path $arg).Path
+        $containerName = Container-Name (Split-Path -Leaf $targetDir)
+    } else {
+        $containerName = Container-Name $arg
+    }
 
     Require-Docker
 
@@ -406,7 +406,7 @@ Commands:
     attach [--shell bash|zsh] [<name>]
                      Attach to a running container by name
                      Without <name>: auto-select if only one is running
-    stop <dir>       Stop and remove the container for <dir>
+    stop <dir|name>  Stop and remove the container by directory or name
     clean            Stop all containers and remove all hanare images
     status           Show running hanare containers
     help             Show this help
