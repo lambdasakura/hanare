@@ -1,0 +1,61 @@
+#!/bin/bash
+set -euo pipefail
+
+# hanare-hostpath: コンテナ内のパスを対応するホスト側のパスに変換する
+#
+# ホスト上で実行した場合:
+#   そのまま絶対パスを返す
+#
+# hanare コンテナ内で実行した場合:
+#   docker inspect でマウント情報を参照し、ホスト側のパスに変換して返す
+#   変換できない場合はエラーを返す
+
+usage() {
+    echo "Usage: hanare-hostpath <path>" >&2
+    exit 1
+}
+
+[[ $# -eq 1 ]] || usage
+[[ -n "$1" ]]  || usage
+
+target="$(realpath "$1")"
+
+# ホスト上で実行している場合はそのまま返す
+if [[ -z "${HANARE_CONTAINER_NAME:-}" ]]; then
+    echo "$target"
+    exit 0
+fi
+
+# コンテナ内: docker inspect でマウント情報を取得して変換
+mounts_json="$(docker inspect "$HANARE_CONTAINER_NAME" --format '{{json .Mounts}}' 2>/dev/null)" \
+    || { echo "Error: docker inspect failed for container '$HANARE_CONTAINER_NAME'" >&2; exit 1; }
+
+host_path="$(echo "$mounts_json" | python3 -c "
+import json, sys
+
+mounts = json.load(sys.stdin)
+target = '$target'
+
+best_dest = ''
+best_source = ''
+
+for m in mounts:
+    dest = m['Destination']
+    source = m['Source']
+    # target が dest 配下であり、最も長くマッチする(最も具体的な)マウントを選ぶ
+    if (target == dest or target.startswith(dest + '/')) and len(dest) > len(best_dest):
+        best_dest = dest
+        best_source = source
+
+if not best_dest:
+    sys.exit(1)
+
+# コンテナ内パスの残り部分をホストパスに付加
+suffix = target[len(best_dest):]
+print(best_source + suffix)
+" 2>/dev/null)" || {
+    echo "Error: '$target' is not within any mounted volume" >&2
+    exit 1
+}
+
+echo "$host_path"

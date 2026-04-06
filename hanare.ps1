@@ -228,6 +228,7 @@ function Cmd-Start {
         'run', '-d',
         '--name', $containerName,
         '--add-host', 'host.docker.internal:host-gateway',
+        '-e', "HANARE_CONTAINER_NAME=$containerName",
         '-e', 'MISE_TRUSTED_CONFIG_PATHS=/workspace'
     )
     $dockerArgs += $proxyEnv

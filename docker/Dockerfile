@@ -77,6 +77,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --chmod=755 docker/init.sh /usr/local/bin/init.sh
+COPY --chmod=755 docker/hanare-hostpath /usr/local/bin/hanare-hostpath
 
 ENTRYPOINT ["entrypoint.sh"]
 CMD ["/bin/zsh"]

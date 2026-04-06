@@ -147,7 +147,8 @@ hanare start .
 │   ├── Dockerfile            # デフォルトイメージ定義
 │   ├── Dockerfile.example    # カスタムイメージのひな形
 │   ├── entrypoint.sh         # エントリーポイント（Docker ソケット設定）
-│   └── init.sh               # 初期化スクリプト（mise install 等）
+│   ├── init.sh               # 初期化スクリプト（mise install 等）
+│   └── hanare-hostpath       # コンテナ内パス → ホストパス変換コマンド
 ├── config/                   # ~/.config/ にマウントされる設定ファイル群
 │   ├── starship.toml         # starship プロンプト設定
 │   ├── mise/
@@ -282,6 +283,19 @@ hanare start --image myenv ~/projects/myapp
 カスタム Dockerfile では `FROM hanare:default` でデフォルトイメージを拡張できる。`docker/Dockerfile.*` は `.gitignore` で除外されているため、リポジトリに影響しない。
 
 毎回 `--image` を指定するのが面倒な場合は、`hanare.conf` で `IMAGE=myenv` をデフォルトに設定できる（「デフォルト設定の変更」を参照）。
+
+## Docker outside of Docker でのボリュームマウント
+
+コンテナ内から Docker コマンドを実行する際、コンテナ内のパスをそのまま `-v` に指定しても正しくマウントされない（Docker daemon はホスト上で動作しているため、ホスト側のパスが必要）。
+
+`hanare-hostpath` コマンドを使うと、コンテナ内のパスを対応するホスト側のパスに変換できる。
+
+```bash
+# コンテナ内で実行
+docker run -v "$(hanare-hostpath /workspace/myproject)":/data some-image
+```
+
+ホスト上で実行した場合はそのまま絶対パスを返す。マウントされていないパスを指定した場合はエラーになる。
 
 ## 注意事項
 

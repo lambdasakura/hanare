@@ -200,6 +200,7 @@ cmd_start() {
     docker run -d \
         --name "$container_name" \
         --add-host host.docker.internal:host-gateway \
+        -e HANARE_CONTAINER_NAME="$container_name" \
         -e MISE_TRUSTED_CONFIG_PATHS=/workspace \
         "${proxy_env[@]}" \
         "${extra_opts[@]}" \
